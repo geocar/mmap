@@ -19,3 +19,4 @@ force it to unmap immediately with:
 ## See Also
 
 * POSIX 1003.1 [mmap](http://pubs.opengroup.org/onlinepubs/9699919799/functions/mmap.html)
+* [bnoordhuis/node-mmap](https://github.com/bnoordhuis/node-mmap), the original node-mmap, on which this is based.
