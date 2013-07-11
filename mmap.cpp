@@ -38,7 +38,15 @@ v8::Handle<v8::Value> Sync(const v8::Arguments& args)
 		if(range < length) length = range;
 	}
 
-	if(0 == msync(data, length, MS_SYNC)) {
+	// Third optional argument: flags
+	int flags;
+	if (args.Length() > 2) {
+		flags = args[2]->ToInteger()->Value();
+	} else {
+		flags = MS_SYNC;
+	}
+
+	if(0 == msync(data, length, flags)) {
 		return v8::True();
 	}
 
@@ -112,6 +120,9 @@ static void RegisterModule(v8::Handle<v8::Object> target)
 	target->Set(v8::String::New("MAP_SHARED"), v8::Integer::New(MAP_SHARED), attribs);
 	target->Set(v8::String::New("MAP_PRIVATE"), v8::Integer::New(MAP_PRIVATE), attribs);
 	target->Set(v8::String::New("PAGESIZE"), v8::Integer::New(sysconf(_SC_PAGESIZE)), attribs);
+	target->Set(v8::String::New("MS_ASYNC"), v8::Integer::New(MS_ASYNC), attribs);
+	target->Set(v8::String::New("MS_SYNC"), v8::Integer::New(MS_SYNC), attribs);
+	target->Set(v8::String::New("MS_INVALIDATE"), v8::Integer::New(MS_INVALIDATE), attribs);
 
 	target->Set(v8::String::NewSymbol("map"),  v8::FunctionTemplate::New(Map)->GetFunction(), attribs);
 }
