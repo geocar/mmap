@@ -15,7 +15,7 @@ fs.truncateSync(fd, mmap.PAGESIZE);
 
 (function(b) {
   assert.equal(b[0],     t,             "value check (map read)");
-  assert.equal(b.sync(), true,          "sync successful");
+  assert.equal(b.sync(), true,          "sync failed");
 
   assert.equal(b.length, mmap.PAGESIZE, "map length is incorrect");
 
