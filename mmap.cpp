@@ -7,10 +7,42 @@
 
 static v8::Persistent<v8::String> length_symbol;
 static v8::Persistent<v8::String> unmap_symbol;
+static v8::Persistent<v8::String> sync_symbol;
 
 static void Map_finalise(char *data, void*hint)
 {
 	munmap(data, (size_t)hint);
+}
+
+v8::Handle<v8::Value> Sync(const v8::Arguments& args)
+{
+	v8::HandleScope scope;
+
+	node::Buffer *buffer = node::ObjectWrap::Unwrap<node::Buffer>( args.This() );
+
+	char* data = static_cast<char*>(buffer->handle_->GetIndexedPropertiesExternalArrayData());
+	size_t length = buffer->handle_->GetIndexedPropertiesExternalArrayDataLength();
+
+	// First optional argument: offset
+	if (args.Length() > 0) {
+		const size_t offset = args[0]->ToInteger()->Value();
+		if(length <= offset) return v8::Undefined();
+
+		data += offset;
+		length -= offset;
+	}
+
+	// Second optional argument: length
+	if (args.Length() > 1) {
+		const size_t range = args[1]->ToInteger()->Value();
+		if(range < length) length = range;
+	}
+
+	if(0 == msync(data, length, MS_SYNC)) {
+		return v8::True();
+	}
+
+	return v8::False();
 }
 
 v8::Handle<v8::Value> Unmap(const v8::Arguments& args)
@@ -57,6 +89,7 @@ v8::Handle<v8::Value> Map(const v8::Arguments& args)
 
 	node::Buffer *buffer = node::Buffer::New(data, size, Map_finalise, (void *) size);
 	buffer->handle_->Set(unmap_symbol, v8::FunctionTemplate::New(Unmap)->GetFunction());
+	buffer->handle_->Set(sync_symbol, v8::FunctionTemplate::New(Sync)->GetFunction());
 
 	return scope.Close( buffer->handle_ );
 }
@@ -67,6 +100,7 @@ static void RegisterModule(v8::Handle<v8::Object> target)
 	v8::HandleScope scope;
 
 	length_symbol = NODE_PSYMBOL("length");
+	sync_symbol   = NODE_PSYMBOL("sync");
 	unmap_symbol  = NODE_PSYMBOL("unmap");
 
 	const v8::PropertyAttribute attribs = (v8::PropertyAttribute) (v8::ReadOnly | v8::DontDelete);
