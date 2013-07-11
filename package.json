@@ -1,5 +1,7 @@
 {
     "name": "mmap",
+    "description": "mmap() fds into buffers",
+    "license": "BSD",
     "version": "2.0.0",
     "main": "./build/Release/mmap",
     "scripts": { 
