@@ -54,13 +54,13 @@ v8::Handle<v8::Value> Unmap(const v8::Arguments& args)
 	char* data = static_cast<char*>(buffer->handle_->GetIndexedPropertiesExternalArrayData());
 	size_t length = buffer->handle_->GetIndexedPropertiesExternalArrayDataLength();
 
+	if(-1 == munmap(data, length)) return v8::False();
+
 	buffer->handle_->SetIndexedPropertiesToExternalArrayData(NULL, v8::kExternalUnsignedByteArray, 0);
 	buffer->handle_->Set(length_symbol, v8::Integer::NewFromUnsigned(0));
 	buffer->handle_.Dispose();
 
-	munmap(data, length);
-
-	return v8::Undefined();
+	return v8::True();
 }
 
 v8::Handle<v8::Value> Map(const v8::Arguments& args)

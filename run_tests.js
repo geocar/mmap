@@ -19,7 +19,7 @@ fs.truncateSync(fd, mmap.PAGESIZE);
 
   assert.equal(b.length, mmap.PAGESIZE, "map length is incorrect");
 
-  b.unmap();
+  assert.equal(b.unmap(), true,         "unmap failed");
   assert.equal(b.length, 0, "unmap truncated fixed buffer");
 
 })( mmap.map(mmap.PAGESIZE,
