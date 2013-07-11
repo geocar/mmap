@@ -1,7 +1,7 @@
 tempfile=(+new Date()) + "." + process.pid + ".tmp",
 assert=require("assert"), fs=require("fs"), mmap = require("./build/Release/mmap");
 
-var t = 0 | (Math.random() * 256);
+var t = 128 | (Math.random() * 256);
 var b = new Buffer(1);
 b[0] = t;
 
