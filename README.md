@@ -60,4 +60,5 @@ You can also [msync()](http://pubs.opengroup.org/onlinepubs/9699919799/functions
 ## See Also
 
 * POSIX 1003.1 [mmap](http://pubs.opengroup.org/onlinepubs/9699919799/functions/mmap.html) and [msync](http://pubs.opengroup.org/onlinepubs/9699919799/functions/msync.html)
+* The `example/` directory contains some sample uses of the mmap module
 * [bnoordhuis/node-mmap](https://github.com/bnoordhuis/node-mmap), the original node-mmap, on which this is based.
