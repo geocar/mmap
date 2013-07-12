@@ -16,7 +16,7 @@ function mmap_wrapper(size, protection, flags, fd, offset) {
   }
 
   var buffer = real_map(size, protection, flags, fd, offset);
-  fs.closeSync(fd);
+  fs.closeSync(fd); // close-behind
   return buffer;
 };
 for(var k in mmap) mmap_wrapper[k] = mmap[k];
