@@ -3,13 +3,9 @@ mmap = require("../index.js"); // obv. use require("mmap") if you lift
 HASH_FUNCTIONS=7; // how many hashes do you want?
 
 size = 1024*1024; // 1mb
-fd = fs.openSync("/tmp/test_bloom", "w+");
-fs.truncateSync(fd, size);
-buffer = mmap.map(size, mmap.PROT_READ|mmap.PROT_WRITE, mmap.MAP_SHARED, fd);
+buffer = mmap.map(size, mmap.PROT_READ|mmap.PROT_WRITE, mmap.MAP_SHARED, "/tmp/test_bloom");
 add(buffer, get_offsets("testing", buffer.length));
 console.log("check: ", check(buffer, get_offsets("testing", buffer.length)));
-
-
 
 
 /* basic bloom filter tricks */
