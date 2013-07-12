@@ -1,5 +1,5 @@
 fs = require("fs"),
-mmap = require("../build/Release/mmap"); // obv. use require("mmap") if you lift
+mmap = require("../index.js"); // obv. use require("mmap") if you lift
 HASH_FUNCTIONS=7; // how many hashes do you want?
 
 size = 1024*1024; // 1mb

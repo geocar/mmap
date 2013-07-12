@@ -2,7 +2,7 @@ lru = [],
 cache = {},
 parseurl = require("url").parse,
 fs = require("fs"),
-mmap = require("../build/Release/mmap"); // obv. use require("mmap") if you lift
+mmap = require("../index.js"); // obv. use require("mmap") if you lift
 
 require("http").createServer(handler).listen(8080, function() {
   console.log("> http ready on http://localhost:8080/");
