@@ -10,7 +10,7 @@ mmap(2) bindings for node.js that work in 0.10
 ## Usage
 
     mmap = require("mmap")
-    buffer = mmap.map(n_bytes, protection, flags, fd, offset)
+    buffer = mmap(n_bytes, protection, flags, fd, offset)
 
 <table>
   <tr>
@@ -27,7 +27,7 @@ mmap(2) bindings for node.js that work in 0.10
   </tr>
   <tr>
     <td><i>fd</i></td>
-    <td>File descriptor.</td>
+    <td>File descriptor. You can also use a file name (string). When you do this, <b>mmap()</b> tries to do the right thing by creating or growing the file to <i>n_bytes</i> if necessary.</td>
   </tr>
   <tr>
     <td><i>offset</i></td>
@@ -56,6 +56,8 @@ You can also [msync()](http://pubs.opengroup.org/onlinepubs/9699919799/functions
     <td>Flags: either <b>mmap.MS_SYNC</b> or <b>mmap.MS_ASYNC</b> optionally bitwise OR with <b>mmap.MS_INVALIDATE</b>. This argument is optional, the default is <b>mmap.MS_SYNC</b>.</td>
   </tr>
 </table>
+
+For compatibility, <b>mmap.map()</b> is an alias for <b>mmap()</b>
 
 ## See Also
 
