@@ -87,4 +87,23 @@ fs.truncateSync(fd, mmap.PAGESIZE);
   mmap.MAP_SHARED, 
   fd) );
 
+fs.writeFileSync(tempfile, b);
+
+global.gc();
+
+(function(b) {
+  assert.equal(b[0],     t,             "value check (map read)");
+  assert.equal(b[1],     0,             "value check (line noise)");
+  assert.equal(b[2],     0,             "value check (line noise)");
+  assert.equal(b.sync(), true,          "sync failed");
+
+  assert.equal(b.length, mmap.PAGESIZE, "map length is incorrect");
+
+})( mmap(mmap.PAGESIZE, // note using wrapper (with filename)
+  mmap.PROT_READ|mmap.PROT_WRITE,
+  mmap.MAP_SHARED, 
+  tempfile) );
+
+global.gc();
+
 console.log("> ok");

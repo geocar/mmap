@@ -8,6 +8,7 @@
 static v8::Persistent<v8::String> length_symbol;
 static v8::Persistent<v8::String> unmap_symbol;
 static v8::Persistent<v8::String> sync_symbol;
+static v8::Persistent<v8::String> buffer_symbol;
 
 static void Map_finalise(char *data, void*hint)
 {
@@ -18,7 +19,7 @@ v8::Handle<v8::Value> Sync(const v8::Arguments& args)
 {
 	v8::HandleScope scope;
 
-	node::Buffer *buffer = node::ObjectWrap::Unwrap<node::Buffer>( args.This() );
+	node::Buffer *buffer = node::ObjectWrap::Unwrap<node::Buffer>(args.This()->GetHiddenValue(buffer_symbol)->ToObject());
 
 	char* data = static_cast<char*>(buffer->handle_->GetIndexedPropertiesExternalArrayData());
 	size_t length = buffer->handle_->GetIndexedPropertiesExternalArrayDataLength();
@@ -57,7 +58,7 @@ v8::Handle<v8::Value> Unmap(const v8::Arguments& args)
 {
 	v8::HandleScope scope;
 
-	node::Buffer *buffer = node::ObjectWrap::Unwrap<node::Buffer>( args.This() );
+	node::Buffer *buffer = node::ObjectWrap::Unwrap<node::Buffer>(args.This()->GetHiddenValue(buffer_symbol)->ToObject());
 
 	char* data = static_cast<char*>(buffer->handle_->GetIndexedPropertiesExternalArrayData());
 	size_t length = buffer->handle_->GetIndexedPropertiesExternalArrayDataLength();
@@ -67,6 +68,8 @@ v8::Handle<v8::Value> Unmap(const v8::Arguments& args)
 	buffer->handle_->SetIndexedPropertiesToExternalArrayData(NULL, v8::kExternalUnsignedByteArray, 0);
 	buffer->handle_->Set(length_symbol, v8::Integer::NewFromUnsigned(0));
 	buffer->handle_.Dispose();
+
+	args.This()->Set(length_symbol, v8::Integer::NewFromUnsigned(0));
 
 	return v8::True();
 }
@@ -95,11 +98,18 @@ v8::Handle<v8::Value> Map(const v8::Arguments& args)
 		return v8::ThrowException(node::ErrnoException(errno, "mmap", ""));
 	}
 
-	node::Buffer *buffer = node::Buffer::New(data, size, Map_finalise, (void *) size);
-	buffer->handle_->Set(unmap_symbol, v8::FunctionTemplate::New(Unmap)->GetFunction());
-	buffer->handle_->Set(sync_symbol, v8::FunctionTemplate::New(Sync)->GetFunction());
+	node::Buffer *slowBuffer = node::Buffer::New(data, size, Map_finalise, (void *) size);
 
-	return scope.Close( buffer->handle_ );
+	v8::Local<v8::Object> globalObj = v8::Context::GetCurrent()->Global();
+	v8::Local<v8::Function> bufferConstructor = v8::Local<v8::Function>::Cast(globalObj->Get(buffer_symbol));
+	v8::Handle<v8::Value> constructorArgs[3] = { slowBuffer->handle_, args[0], v8::Integer::New(0) };
+	v8::Local<v8::Object> actualBuffer = bufferConstructor->NewInstance(3, constructorArgs);
+
+	actualBuffer->Set(unmap_symbol, v8::FunctionTemplate::New(Unmap)->GetFunction());
+	actualBuffer->Set(sync_symbol, v8::FunctionTemplate::New(Sync)->GetFunction());
+	actualBuffer->SetHiddenValue(buffer_symbol, slowBuffer->handle_);
+
+	return scope.Close(actualBuffer);
 }
 
 
@@ -110,6 +120,7 @@ static void RegisterModule(v8::Handle<v8::Object> target)
 	length_symbol = NODE_PSYMBOL("length");
 	sync_symbol   = NODE_PSYMBOL("sync");
 	unmap_symbol  = NODE_PSYMBOL("unmap");
+	buffer_symbol = NODE_PSYMBOL("Buffer");
 
 	const v8::PropertyAttribute attribs = (v8::PropertyAttribute) (v8::ReadOnly | v8::DontDelete);
 
