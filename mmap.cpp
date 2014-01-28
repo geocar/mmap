@@ -130,6 +130,7 @@ static void RegisterModule(v8::Handle<v8::Object> target)
 	target->Set(v8::String::New("PROT_NONE"), v8::Integer::New(PROT_NONE), attribs);
 	target->Set(v8::String::New("MAP_SHARED"), v8::Integer::New(MAP_SHARED), attribs);
 	target->Set(v8::String::New("MAP_PRIVATE"), v8::Integer::New(MAP_PRIVATE), attribs);
+	target->Set(v8::String::New("MAP_ANON"), v8::Integer::New(MAP_ANON), attribs);
 	target->Set(v8::String::New("PAGESIZE"), v8::Integer::New(sysconf(_SC_PAGESIZE)), attribs);
 	target->Set(v8::String::New("MS_ASYNC"), v8::Integer::New(MS_ASYNC), attribs);
 	target->Set(v8::String::New("MS_SYNC"), v8::Integer::New(MS_SYNC), attribs);

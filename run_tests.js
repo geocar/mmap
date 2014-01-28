@@ -106,4 +106,15 @@ global.gc();
 
 global.gc();
 
+(function(b) {
+  assert.equal(b[0],     0,             "value check (map read)");
+  assert.equal(b.length, mmap.PAGESIZE, "map length is incorrect");
+
+})( mmap(mmap.PAGESIZE, // note using wrapper (with filename)
+  mmap.PROT_READ|mmap.PROT_WRITE,
+  mmap.MAP_PRIVATE | mmap.MAP_ANON,
+  -1) );
+
+global.gc();
+
 console.log("> ok");
