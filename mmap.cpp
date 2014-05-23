@@ -8,7 +8,11 @@
 static v8::Persistent<v8::String> length_symbol;
 static v8::Persistent<v8::String> unmap_symbol;
 static v8::Persistent<v8::String> sync_symbol;
+static v8::Persistent<v8::String> unlink_symbol;
+static v8::Persistent<v8::String> name_symbol;
 static v8::Persistent<v8::String> buffer_symbol;
+
+static v8::Persistent<v8::Function> map_symbol;
 
 static void Map_finalise(char *data, void*hint)
 {
@@ -112,6 +116,52 @@ v8::Handle<v8::Value> Map(const v8::Arguments& args)
 	return scope.Close(actualBuffer);
 }
 
+v8::Handle<v8::Value> Unlink(const v8::Arguments& args)
+{
+	v8::HandleScope scope;
+	v8::String::Utf8Value name(args.This()->GetHiddenValue(name_symbol)->ToString());
+	if (shm_unlink(*name) < 0)
+	{
+		return v8::ThrowException(node::ErrnoException(errno, "unlink", ""));
+	}
+	return v8::True();
+}
+
+v8::Handle<v8::Value> MapShm(const v8::Arguments& args)
+{
+	v8::HandleScope scope;
+
+	if (args.Length() <= 3)
+	{
+		return v8::ThrowException(
+			v8::Exception::Error(
+				v8::String::New("map_shm() takes 4 arguments: size, protection, flags, name and offset.")));
+	}
+
+	const size_t size    = args[0]->ToInteger()->Value();
+	const v8::String::Utf8Value	name(args[3]->ToString());
+	const int fd = shm_open(*name, O_CREAT | O_RDWR | O_SYNC, 0666);
+  if (fd < 0)
+  {
+		return v8::ThrowException(node::ErrnoException(errno, "map_shm", ""));
+  }
+  ftruncate(fd, size);
+
+  v8::Handle<v8::Value> *mapArgs = (v8::Handle<v8::Value> *)calloc(sizeof(v8::Handle<v8::Value>), args.Length());
+  for (int i = 0; i < args.Length(); i++)
+		mapArgs[i] = args[i];
+  mapArgs[3] = v8::Integer::New(fd);
+
+  v8::Handle<v8::Object> global = v8::Context::GetCurrent()->Global();
+  v8::Handle<v8::Object> actualBuffer = map_symbol->Call(global, args.Length(), mapArgs)->ToObject();
+  free(mapArgs);
+  close(fd);
+
+	actualBuffer->ToObject()->Set(unlink_symbol, v8::FunctionTemplate::New(Unlink)->GetFunction());
+	actualBuffer->SetHiddenValue(name_symbol, v8::String::New(*name));
+
+	return scope.Close(actualBuffer);
+}
 
 static void RegisterModule(v8::Handle<v8::Object> target)
 {
@@ -120,7 +170,11 @@ static void RegisterModule(v8::Handle<v8::Object> target)
 	length_symbol = NODE_PSYMBOL("length");
 	sync_symbol   = NODE_PSYMBOL("sync");
 	unmap_symbol  = NODE_PSYMBOL("unmap");
+	unlink_symbol = NODE_PSYMBOL("unlink");
+	name_symbol = NODE_PSYMBOL("name");
 	buffer_symbol = NODE_PSYMBOL("Buffer");
+
+	map_symbol = v8::Persistent<v8::Function>::New(v8::FunctionTemplate::New(Map)->GetFunction());
 
 	const v8::PropertyAttribute attribs = (v8::PropertyAttribute) (v8::ReadOnly | v8::DontDelete);
 
@@ -136,6 +190,7 @@ static void RegisterModule(v8::Handle<v8::Object> target)
 	target->Set(v8::String::New("MS_INVALIDATE"), v8::Integer::New(MS_INVALIDATE), attribs);
 
 	target->Set(v8::String::NewSymbol("map"),  v8::FunctionTemplate::New(Map)->GetFunction(), attribs);
+	target->Set(v8::String::NewSymbol("map_shm"),  v8::FunctionTemplate::New(MapShm)->GetFunction(), attribs);
 }
 
 NODE_MODULE(mmap, RegisterModule);

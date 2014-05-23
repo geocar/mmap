@@ -21,5 +21,6 @@ function mmap_wrapper(size, protection, flags, fd, offset) {
 };
 for(var k in mmap) mmap_wrapper[k] = mmap[k];
 mmap_wrapper.map = mmap_wrapper;
+mmap_wrapper.map_shm = mmap.map_shm;
 
 module.exports = mmap_wrapper;
