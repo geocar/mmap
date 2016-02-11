@@ -5,29 +5,32 @@
 #include <unistd.h>
 #include <errno.h>
 
-static v8::Persistent<v8::String> length_symbol;
-static v8::Persistent<v8::String> unmap_symbol;
-static v8::Persistent<v8::String> sync_symbol;
-static v8::Persistent<v8::String> buffer_symbol;
+struct hint_wrap {
+	size_t length;
+};
 
-static void Map_finalise(char *data, void*hint)
+
+static void Map_finalise(char *data, void*hint_void)
 {
-	munmap(data, (size_t)hint);
+	struct hint_wrap *h = (struct hint_wrap *)hint_void;
+
+	if(h->length > 0) {
+		munmap(data, h->length);
+	}
+	delete h;
 }
 
-v8::Handle<v8::Value> Sync(const v8::Arguments& args)
+void Sync(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-	v8::HandleScope scope;
-
-	node::Buffer *buffer = node::ObjectWrap::Unwrap<node::Buffer>(args.This()->GetHiddenValue(buffer_symbol)->ToObject());
-
-	char* data = static_cast<char*>(buffer->handle_->GetIndexedPropertiesExternalArrayData());
-	size_t length = buffer->handle_->GetIndexedPropertiesExternalArrayDataLength();
+	auto *isolate = args.GetIsolate();
+	auto buffer = args.This()->ToObject();
+	char *data = node::Buffer::Data(buffer);
+	size_t length = node::Buffer::Length(buffer);
 
 	// First optional argument: offset
 	if (args.Length() > 0) {
 		const size_t offset = args[0]->ToInteger()->Value();
-		if(length <= offset) return v8::Undefined();
+		if(length <= offset) return;
 
 		data += offset;
 		length -= offset;
@@ -47,95 +50,86 @@ v8::Handle<v8::Value> Sync(const v8::Arguments& args)
 		flags = MS_SYNC;
 	}
 
-	if(0 == msync(data, length, flags)) {
-		return v8::True();
+	args.GetReturnValue().Set((0 == msync(data, length, flags)) ? v8::True(isolate) : v8::False(isolate));
+}
+
+void Unmap(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+	auto *isolate = args.GetIsolate();
+	auto buffer = args.This()->ToObject();
+	char *data = node::Buffer::Data(buffer);
+
+	struct hint_wrap *d = (struct hint_wrap *)v8::External::Cast(*buffer->GetHiddenValue(v8::String::NewFromUtf8(isolate,"mmap_dptr")))->Value();
+
+	bool ok = true;
+
+	if(d->length > 0 && -1 == munmap(data, d->length)) {
+		ok = false;
+	} else {
+		d->length = 0;
+		(void)buffer->CreateDataProperty(isolate->GetCurrentContext(),
+			v8::String::NewFromUtf8(isolate, "length"),
+			v8::Number::New(isolate, 0));
 	}
 
-	return v8::False();
+	args.GetReturnValue().Set(ok? v8::True(isolate): v8::False(isolate));
 }
 
-v8::Handle<v8::Value> Unmap(const v8::Arguments& args)
+void Map(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-	v8::HandleScope scope;
-
-	node::Buffer *buffer = node::ObjectWrap::Unwrap<node::Buffer>(args.This()->GetHiddenValue(buffer_symbol)->ToObject());
-
-	char* data = static_cast<char*>(buffer->handle_->GetIndexedPropertiesExternalArrayData());
-	size_t length = buffer->handle_->GetIndexedPropertiesExternalArrayDataLength();
-
-	if(-1 == munmap(data, length)) return v8::False();
-
-	buffer->handle_->SetIndexedPropertiesToExternalArrayData(NULL, v8::kExternalUnsignedByteArray, 0);
-	buffer->handle_->Set(length_symbol, v8::Integer::NewFromUnsigned(0));
-	buffer->handle_.Dispose();
-
-	args.This()->Set(length_symbol, v8::Integer::NewFromUnsigned(0));
-
-	return v8::True();
-}
-
-v8::Handle<v8::Value> Map(const v8::Arguments& args)
-{
-	v8::HandleScope scope;
+	auto *isolate = args.GetIsolate();
 
 	if (args.Length() <= 3)
 	{
-		return v8::ThrowException(
+		isolate->ThrowException(
 			v8::Exception::Error(
-				v8::String::New("mmap() takes 4 arguments: size, protection, flags, fd and offset.")));
+				v8::String::NewFromUtf8(isolate, "mmap() takes 4 arguments: size, protection, flags, fd and offset.")));
+		return;
 	}
 
-	const size_t size    = args[0]->ToInteger()->Value();
+	const size_t length  = args[0]->ToInteger()->Value();
 	const int protection = args[1]->ToInteger()->Value();
 	const int flags      = args[2]->ToInteger()->Value();
 	const int fd         = args[3]->ToInteger()->Value();
 	const off_t offset   = args[4]->ToInteger()->Value();
 
-	char* data = (char *) mmap(0, size, protection, flags, fd, offset);
+	char* data = (char *) mmap(0, length, protection, flags, fd, offset);
 
 	if(data == MAP_FAILED)
 	{
-		return v8::ThrowException(node::ErrnoException(errno, "mmap", ""));
+		isolate->ThrowException(node::ErrnoException(isolate, errno, "mmap", ""));
+		return;
 	}
 
-	node::Buffer *slowBuffer = node::Buffer::New(data, size, Map_finalise, (void *) size);
+	struct hint_wrap *d = new hint_wrap;
+	d->length = length;
 
-	v8::Local<v8::Object> globalObj = v8::Context::GetCurrent()->Global();
-	v8::Local<v8::Function> bufferConstructor = v8::Local<v8::Function>::Cast(globalObj->Get(buffer_symbol));
-	v8::Handle<v8::Value> constructorArgs[3] = { slowBuffer->handle_, args[0], v8::Integer::New(0) };
-	v8::Local<v8::Object> actualBuffer = bufferConstructor->NewInstance(3, constructorArgs);
+	auto buffer = node::Buffer::New(isolate, data, length, Map_finalise, (void*)d).ToLocalChecked();
+	auto buffer_object = buffer->ToObject();
 
-	actualBuffer->Set(unmap_symbol, v8::FunctionTemplate::New(Unmap)->GetFunction());
-	actualBuffer->Set(sync_symbol, v8::FunctionTemplate::New(Sync)->GetFunction());
-	actualBuffer->SetHiddenValue(buffer_symbol, slowBuffer->handle_);
+	buffer_object->Set(v8::String::NewFromUtf8(isolate, "unmap"), v8::FunctionTemplate::New(isolate, Unmap)->GetFunction());
+	buffer_object->Set(v8::String::NewFromUtf8(isolate, "sync"), v8::FunctionTemplate::New(isolate, Sync)->GetFunction());
+	buffer_object->SetHiddenValue(v8::String::NewFromUtf8(isolate,"mmap_dptr"), v8::External::New(isolate, (void*)d));
 
-	return scope.Close(actualBuffer);
+	args.GetReturnValue().Set(buffer);
 }
 
 
-static void RegisterModule(v8::Handle<v8::Object> target)
+static void RegisterModule(v8::Local<v8::Object> exports)
 {
-	v8::HandleScope scope;
+	const int PAGESIZE = sysconf(_SC_PAGESIZE);
 
-	length_symbol = NODE_PSYMBOL("length");
-	sync_symbol   = NODE_PSYMBOL("sync");
-	unmap_symbol  = NODE_PSYMBOL("unmap");
-	buffer_symbol = NODE_PSYMBOL("Buffer");
-
-	const v8::PropertyAttribute attribs = (v8::PropertyAttribute) (v8::ReadOnly | v8::DontDelete);
-
-	target->Set(v8::String::New("PROT_READ"), v8::Integer::New(PROT_READ), attribs);
-	target->Set(v8::String::New("PROT_WRITE"), v8::Integer::New(PROT_WRITE), attribs);
-	target->Set(v8::String::New("PROT_EXEC"), v8::Integer::New(PROT_EXEC), attribs);
-	target->Set(v8::String::New("PROT_NONE"), v8::Integer::New(PROT_NONE), attribs);
-	target->Set(v8::String::New("MAP_SHARED"), v8::Integer::New(MAP_SHARED), attribs);
-	target->Set(v8::String::New("MAP_PRIVATE"), v8::Integer::New(MAP_PRIVATE), attribs);
-	target->Set(v8::String::New("PAGESIZE"), v8::Integer::New(sysconf(_SC_PAGESIZE)), attribs);
-	target->Set(v8::String::New("MS_ASYNC"), v8::Integer::New(MS_ASYNC), attribs);
-	target->Set(v8::String::New("MS_SYNC"), v8::Integer::New(MS_SYNC), attribs);
-	target->Set(v8::String::New("MS_INVALIDATE"), v8::Integer::New(MS_INVALIDATE), attribs);
-
-	target->Set(v8::String::NewSymbol("map"),  v8::FunctionTemplate::New(Map)->GetFunction(), attribs);
+	NODE_SET_METHOD(exports, "map", Map);
+	NODE_DEFINE_CONSTANT(exports, PROT_READ);
+	NODE_DEFINE_CONSTANT(exports, PROT_WRITE);
+	NODE_DEFINE_CONSTANT(exports, PROT_EXEC);
+	NODE_DEFINE_CONSTANT(exports, PROT_NONE);
+	NODE_DEFINE_CONSTANT(exports, MAP_SHARED);
+	NODE_DEFINE_CONSTANT(exports, MAP_PRIVATE);
+	NODE_DEFINE_CONSTANT(exports, PAGESIZE);
+	NODE_DEFINE_CONSTANT(exports, MS_ASYNC);
+	NODE_DEFINE_CONSTANT(exports, MS_SYNC);
+	NODE_DEFINE_CONSTANT(exports, MS_INVALIDATE);
 }
 
 NODE_MODULE(mmap, RegisterModule);
