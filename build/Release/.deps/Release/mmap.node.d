@@ -1,0 +1,1 @@
+cmd_Release/mmap.node := c++ -bundle -stdlib=libc++ -undefined dynamic_lookup -Wl,-no_pie -Wl,-search_paths_first -mmacosx-version-min=10.9 -arch x86_64 -L./Release -stdlib=libc++  -o Release/mmap.node Release/obj.target/mmap/mmap.o -L/Users/greg/git/mmap/lib -v -lc++

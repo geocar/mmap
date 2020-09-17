@@ -3,11 +3,16 @@
     "description": "mmap() fds into buffers",
     "license": "BSD",
     "version": "3.0.0",
-    "engines":{"node": "5.x.x"},
+    "engines": {
+        "node": "5.x.x"
+    },
     "main": "./index.js",
-    "repository": { "type": "git", "url": "https://github.com/geocar/mmap.git" },
-    "scripts": { 
-	"pretest": "npm build .",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/geocar/mmap.git"
+    },
+    "scripts": {
+        "pretest": "npm build .",
         "test": "node --expose-gc run_tests.js"
     }
 }
