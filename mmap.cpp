@@ -20,16 +20,16 @@ static void Map_finalise(char *data, void*hint_void)
 	delete h;
 }
 
-void Sync(const v8::FunctionCallbackInfo<v8::Value>& args)
+void Node_Sync(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
 	auto *isolate = args.GetIsolate();
-	auto buffer = args.This()->ToObject();
-	char *data = node::Buffer::Data(buffer);
+	auto buffer = args.This()->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
+	char *data = node::Buffer::Data(static_cast<v8::Local<v8::Object>>(buffer));
 	size_t length = node::Buffer::Length(buffer);
 
 	// First optional argument: offset
 	if (args.Length() > 0) {
-		const size_t offset = args[0]->ToInteger()->Value();
+		const size_t offset = args[0]->ToInteger(isolate->GetCurrentContext()).ToLocalChecked()->Value();
 		if(length <= offset) return;
 
 		data += offset;
@@ -38,14 +38,14 @@ void Sync(const v8::FunctionCallbackInfo<v8::Value>& args)
 
 	// Second optional argument: length
 	if (args.Length() > 1) {
-		const size_t range = args[1]->ToInteger()->Value();
+		const size_t range = args[1]->ToInteger(isolate->GetCurrentContext()).ToLocalChecked()->Value();
 		if(range < length) length = range;
 	}
 
 	// Third optional argument: flags
 	int flags;
 	if (args.Length() > 2) {
-		flags = args[2]->ToInteger()->Value();
+		flags = args[2]->ToInteger(isolate->GetCurrentContext()).ToLocalChecked()->Value();
 	} else {
 		flags = MS_SYNC;
 	}
@@ -53,13 +53,16 @@ void Sync(const v8::FunctionCallbackInfo<v8::Value>& args)
 	args.GetReturnValue().Set((0 == msync(data, length, flags)) ? v8::True(isolate) : v8::False(isolate));
 }
 
-void Unmap(const v8::FunctionCallbackInfo<v8::Value>& args)
+void Node_Unmap(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
 	auto *isolate = args.GetIsolate();
-	auto buffer = args.This()->ToObject();
+	auto context = isolate->GetCurrentContext();
+	auto buffer = args.This()->ToObject(context).ToLocalChecked();
 	char *data = node::Buffer::Data(buffer);
 
-	struct hint_wrap *d = (struct hint_wrap *)v8::External::Cast(*buffer->GetHiddenValue(v8::String::NewFromUtf8(isolate,"mmap_dptr")))->Value();
+	auto keyString = v8::String::NewFromUtf8(isolate,"mmap_dptr").ToLocalChecked();
+	auto key = v8::Private::New(isolate, keyString);
+	struct hint_wrap *d = (struct hint_wrap *)v8::External::Cast(*buffer->GetPrivate(context, key).ToLocalChecked())->Value();
 
 	bool ok = true;
 
@@ -68,30 +71,31 @@ void Unmap(const v8::FunctionCallbackInfo<v8::Value>& args)
 	} else {
 		d->length = 0;
 		(void)buffer->CreateDataProperty(isolate->GetCurrentContext(),
-			v8::String::NewFromUtf8(isolate, "length"),
+			v8::String::NewFromUtf8(isolate, "length").ToLocalChecked(),
 			v8::Number::New(isolate, 0));
 	}
 
 	args.GetReturnValue().Set(ok? v8::True(isolate): v8::False(isolate));
 }
 
-void Map(const v8::FunctionCallbackInfo<v8::Value>& args)
+void Node_Map(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
 	auto *isolate = args.GetIsolate();
+	auto context = isolate->GetCurrentContext();
 
 	if (args.Length() <= 3)
 	{
 		isolate->ThrowException(
 			v8::Exception::Error(
-				v8::String::NewFromUtf8(isolate, "mmap() takes 4 arguments: size, protection, flags, fd and offset.")));
+				v8::String::NewFromUtf8(isolate, "mmap() takes 4 arguments: size, protection, flags, fd and offset.").ToLocalChecked()));
 		return;
 	}
 
-	const size_t length  = args[0]->ToInteger()->Value();
-	const int protection = args[1]->ToInteger()->Value();
-	const int flags      = args[2]->ToInteger()->Value();
-	const int fd         = args[3]->ToInteger()->Value();
-	const off_t offset   = args[4]->ToInteger()->Value();
+	const size_t length  = args[0]->ToInteger(isolate->GetCurrentContext()).ToLocalChecked()->Value();
+	const int protection = args[1]->ToInteger(isolate->GetCurrentContext()).ToLocalChecked()->Value();
+	const int flags      = args[2]->ToInteger(isolate->GetCurrentContext()).ToLocalChecked()->Value();
+	const int fd         = args[3]->ToInteger(isolate->GetCurrentContext()).ToLocalChecked()->Value();
+	const off_t offset   = args[4]->ToInteger(isolate->GetCurrentContext()).ToLocalChecked()->Value();
 
 	char* data = (char *) mmap(0, length, protection, flags, fd, offset);
 
@@ -105,11 +109,17 @@ void Map(const v8::FunctionCallbackInfo<v8::Value>& args)
 	d->length = length;
 
 	auto buffer = node::Buffer::New(isolate, data, length, Map_finalise, (void*)d).ToLocalChecked();
-	auto buffer_object = buffer->ToObject();
+	auto buffer_object = buffer->ToObject(context).ToLocalChecked();
+	auto UNMAP = v8::String::NewFromUtf8(isolate, "unmap").ToLocalChecked();
+	auto SYNC = v8::String::NewFromUtf8(isolate, "sync").ToLocalChecked();
+	auto MMAP_DPTR = v8::Private::New(isolate, v8::String::NewFromUtf8(isolate, "mmap_dptr").ToLocalChecked());
+	auto UnmapFN = v8::FunctionTemplate::New(isolate, Node_Unmap)->GetFunction(context).ToLocalChecked();
+	auto SyncFN = v8::FunctionTemplate::New(isolate, Node_Sync)->GetFunction(context).ToLocalChecked();
+	auto MMAP_DPTR_COPY = v8::External::New(isolate, (void*)d);
 
-	buffer_object->Set(v8::String::NewFromUtf8(isolate, "unmap"), v8::FunctionTemplate::New(isolate, Unmap)->GetFunction());
-	buffer_object->Set(v8::String::NewFromUtf8(isolate, "sync"), v8::FunctionTemplate::New(isolate, Sync)->GetFunction());
-	buffer_object->SetHiddenValue(v8::String::NewFromUtf8(isolate,"mmap_dptr"), v8::External::New(isolate, (void*)d));
+	buffer_object->Set(context, UNMAP, UnmapFN);
+	buffer_object->Set(context, SYNC, SyncFN);
+	buffer_object->SetPrivate(context,MMAP_DPTR, MMAP_DPTR_COPY);
 
 	args.GetReturnValue().Set(buffer);
 }
@@ -119,7 +129,7 @@ static void RegisterModule(v8::Local<v8::Object> exports)
 {
 	const int PAGESIZE = sysconf(_SC_PAGESIZE);
 
-	NODE_SET_METHOD(exports, "map", Map);
+	NODE_SET_METHOD(exports, "map", Node_Map);
 	NODE_DEFINE_CONSTANT(exports, PROT_READ);
 	NODE_DEFINE_CONSTANT(exports, PROT_WRITE);
 	NODE_DEFINE_CONSTANT(exports, PROT_EXEC);
